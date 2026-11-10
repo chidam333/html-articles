@@ -1,6 +1,6 @@
 ---
 name: html-articles
-description: Review an article draft without rewording it, package an Obsidian markdown article with its pasted images into a folder, and turn it into a plain HTML page — a centred column, images at sensible size that shrink on phones, centred bordered tables, footnotes, and an optional author byline, with almost no styling. Use when the user wants an article or blog post reviewed, exported or published as HTML, an Obsidian/Quartz note converted to HTML, or an article folder set up in a repo.
+description: Review an article draft without rewording it, package an Obsidian markdown article with its pasted images into a folder, and turn it into a plain HTML page — a centred column, images at sensible size that shrink on phones and load as compressed WebP without layout shift, centred bordered tables, footnotes, and an optional author byline, with almost no styling. Use when the user wants an article or blog post reviewed, exported or published as HTML, an Obsidian/Quartz note converted to HTML, or an article folder set up in a repo.
 ---
 
 # HTML articles
@@ -38,6 +38,7 @@ article/
 ├── <Post title>.html        generated
 ├── build.mjs                copied from this skill
 └── images/                  only the images the post embeds
+    └── web/                 generated WebP copies the page actually loads
 ```
 
 - Find images by reading the `![[…]]` embeds out of the post, then locate each file in the vault (often an
@@ -46,11 +47,11 @@ article/
 
 ## 4. Converting to HTML
 
-Copy [`build.mjs`](build.mjs) from this skill's folder into the article folder. Install its two libraries as
+Copy [`build.mjs`](build.mjs) from this skill's folder into the article folder. Install its three libraries as
 **dev dependencies, pinned to exact versions**:
 
 ```bash
-npm install --save-dev --save-exact markdown-it@<version> markdown-it-footnote@<version>
+npm install --save-dev --save-exact markdown-it@<version> markdown-it-footnote@<version> sharp@<version>
 npm audit
 node article/build.mjs
 ```
@@ -70,7 +71,11 @@ What the script does, and why — keep all of it:
 | `breaks: true` | Obsidian shows a single newline as a line break; without this, stacked lines (log output, formulas) merge into one paragraph. |
 | `![[name.png]]` → `<img src="images/name%20…png">` | Browsers and GitHub don't understand Obsidian embeds. File names often contain spaces, so they're URL-encoded. |
 | PNG `width`/`height` = half the pixel size, capped at `MAX_WIDTH` (720) | Pasted screenshots and exported charts are usually 2x (1,300–2,000px wide) and dominate the page at full size. Sizes are read from the PNG header; other formats keep their natural size. |
-| `loading="lazy"` | Images below the fold load as the reader scrolls. |
+| `width`/`height` on every PNG, plus `img { height: auto }` | The browser reserves each image's box before it loads, so text doesn't jump (no layout shift). Keep both: the attributes give the aspect ratio, the CSS lets the box shrink on phones. |
+| PNGs → WebP copies in `images/web/`, at most 2× `MAX_WIDTH` (1440px) wide | Screenshots straight from the clipboard are large. 2× the column is still sharp on retina screens. On a typical article this cuts images by about two-thirds (~820 KB → ~280 KB). The original PNGs stay untouched for Obsidian. |
+| Per image, the smaller of WebP quality 90 and lossless WebP | Lossy wins for charts and photos, lossless for small screenshots of text (it can be a third the size). Quality 90 keeps chart text crisp. |
+| Copies rebuilt only when the PNG is newer | Re-running the build is fast. |
+| `loading="lazy"`, `decoding="async"` | Images below the fold load as the reader scrolls and decode off the main thread. |
 | `<meta name="author">`, `<link rel="author">`, `<address>By <a rel="author">…</a></address>` | The standard HTML way to mark authorship, read by browsers, search engines and link previews. |
 | `<article>` + `<header>` around title, byline and body | Ties the byline to the post. |
 | `<title>` and `<h1>` from the file name | Matches how Obsidian/Quartz title notes. |
@@ -80,7 +85,7 @@ What the script does, and why — keep all of it:
 The author adds their own styling. The page gets only these rules:
 
 ```css
-body { max-width: 720px; margin: 0 auto; padding: 0 16px; }   /* centred column with side margins */
+body { max-width: 720px; margin: 0 auto; padding: 48px 16px; } /* centred column, space above the title, side margins */
 img { max-width: 100%; height: auto; }                        /* images shrink on phones */
 table { margin: 0 auto; border-collapse: collapse; }          /* tables sit in the middle of the column */
 th, td { border: 1px solid; padding: 4px 12px; }              /* thin borders; padding keeps text off the lines */
@@ -94,7 +99,10 @@ th, td { border: 1px solid; padding: 4px 12px; }              /* thin borders; p
 
 After `node article/build.mjs`:
 
-- every `<img>` src resolves to a file in `images/` (decode the URL first);
+- every `<img>` src resolves to a file (decode the URL first); local PNGs point at `images/web/*.webp`, and
+  every one has `width` and `height`;
+- look at the page itself (for example a headless Chrome screenshot at `--force-device-scale-factor=2`), not
+  just the image files, to confirm the WebP images are sharp and the boxes are the right size;
 - the number of tables and `footnote-item`s matches the markdown, and no `[[` is left in the HTML;
 - `<body>` and `<article>` each appear once;
 - stacked lines (logs, formulas) kept their line breaks.
@@ -102,7 +110,20 @@ After `node article/build.mjs`:
 If the author sends a screenshot that doesn't match the current output, it is usually a stale page: say so and
 ask them to reload before changing any code.
 
-## 7. Committing
+## 7. Cover or header images
 
-Don't commit or push unless asked. When asked, commit the article folder, the build script and the
-`package.json`/lockfile changes together.
+If the author wants a picture above the title:
+
+- **Look at the image first** and say where its subject sits (and its pixel size: different images have
+  different shapes). Crop or position around that subject, never blindly from the centre.
+- Crop with CSS (`aspect-ratio` + `object-fit: cover` + `object-position`), not by editing the file, so the
+  crop is easy to change. Give it `width`/`height` attributes like any other image.
+- A fade into the page is a `mask-image` gradient to transparent, so it fades into whatever the background
+  is. Check whether the image already fades on its own before adding one.
+- Check every change in a real browser screenshot of the page; a crop of the image file can disagree with
+  what the page shows.
+
+## 8. Committing
+
+Don't commit or push unless asked. When asked, commit the article folder (including `images/web/`), the build
+script and the `package.json`/lockfile changes together.
