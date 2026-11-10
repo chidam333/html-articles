@@ -110,20 +110,7 @@ After `node article/build.mjs`:
 If the author sends a screenshot that doesn't match the current output, it is usually a stale page: say so and
 ask them to reload before changing any code.
 
-## 7. Cover or header images
-
-If the author wants a picture above the title:
-
-- **Look at the image first** and say where its subject sits (and its pixel size: different images have
-  different shapes). Crop or position around that subject, never blindly from the centre.
-- Crop with CSS (`aspect-ratio` + `object-fit: cover` + `object-position`), not by editing the file, so the
-  crop is easy to change. Give it `width`/`height` attributes like any other image.
-- A fade into the page is a `mask-image` gradient to transparent, so it fades into whatever the background
-  is. Check whether the image already fades on its own before adding one.
-- Check every change in a real browser screenshot of the page; a crop of the image file can disagree with
-  what the page shows.
-
-## 8. Committing
+## 7. Committing
 
 Don't commit or push unless asked. When asked, commit the article folder (including `images/web/`), the build
 script and the `package.json`/lockfile changes together.
